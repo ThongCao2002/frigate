@@ -1,3 +1,4 @@
+import copy
 import datetime
 import logging
 import math
@@ -15,12 +16,22 @@ import numpy as np
 from setproctitle import setproctitle
 
 from frigate.config import CameraConfig, DetectConfig, ModelConfig
-from frigate.const import ALL_ATTRIBUTE_LABELS, ATTRIBUTE_LABEL_MAP, CACHE_DIR
+from frigate.const import (
+    ALL_ATTRIBUTE_LABELS,
+    ATTRIBUTE_LABEL_MAP,
+    CACHE_DIR,
+    DEFAULT_LICENSE_PLATE_LABEL,
+)
 from frigate.detectors.detector_config import PixelFormatEnum
 from frigate.log import LogPipe
 from frigate.motion import MotionDetector
 from frigate.motion.improved_motion import ImprovedMotionDetector
 from frigate.object_detection import RemoteObjectDetector
+from frigate.plate_detectors.alpr.plate_checker import Plate_Checker
+from frigate.plate_detectors.alpr.plate_detector_gpu import Plate_Detector
+from frigate.plate_detectors.alpr.plate_recognizer import Plate_Recognizer
+from frigate.plate_detectors.alpr.retina_plate.utils.utils import img_transform
+from frigate.ptz.autotrack import ptz_moving_at_frame_time
 from frigate.track import ObjectTracker
 from frigate.track.norfair_tracker import NorfairTracker
 from frigate.types import PTZMetricsTypes
@@ -479,6 +490,7 @@ def track_camera(
 
     frame_shape = config.frame_shape
     objects_to_track = config.objects.track
+    vehicle_objects_to_track = config.objects.vehicle_track
     object_filters = config.objects.filters
 
     motion_detector = ImprovedMotionDetector(
@@ -494,6 +506,10 @@ def track_camera(
     )
 
     object_tracker = NorfairTracker(config, ptz_metrics)
+    # Use gpu for Plate detector
+    plate_detector = Plate_Detector(load_to_cpu=False)
+    plate_recognizer = Plate_Recognizer()
+    plate_checker = Plate_Checker()
 
     frame_manager = SharedMemoryFrameManager()
 
@@ -506,10 +522,14 @@ def track_camera(
         frame_manager,
         motion_detector,
         object_detector,
+        plate_detector,
+        plate_recognizer,
+        plate_checker,
         object_tracker,
         detected_objects_queue,
         process_info,
         objects_to_track,
+        vehicle_objects_to_track,
         object_filters,
         detection_enabled,
         motion_enabled,
@@ -731,10 +751,14 @@ def process_frames(
     frame_manager: FrameManager,
     motion_detector: MotionDetector,
     object_detector: RemoteObjectDetector,
+    plate_detector: Plate_Detector,
+    plate_recognizer: Plate_Recognizer,
+    plate_checker: Plate_Checker,
     object_tracker: ObjectTracker,
     detected_objects_queue: mp.Queue,
     process_info: dict,
     objects_to_track: list[str],
+    vehicle_objects_to_track: list[str],
     object_filters,
     detection_enabled: mp.Value,
     motion_enabled: mp.Value,
@@ -771,13 +795,28 @@ def process_frames(
         frame = frame_manager.get(
             f"{camera_name}{frame_time}", (frame_shape[0] * 3 // 2, frame_shape[1])
         )
+        rgb_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_YUV2RGB_I420,
+        )
 
         if frame is None:
             logger.info(f"{camera_name}: frame {frame_time} is not in memory store.")
             continue
 
-        # look for motion if enabled
-        motion_boxes = motion_detector.detect(frame) if motion_enabled.value else []
+        # look for motion if enabled and ptz is not moving
+        # ptz_moving_at_frame_time() always returns False for
+        # non ptz/autotracking cameras
+        motion_boxes = (
+            motion_detector.detect(frame)
+            if motion_enabled.value
+            and not ptz_moving_at_frame_time(
+                frame_time,
+                ptz_metrics["ptz_start_time"].value,
+                ptz_metrics["ptz_stop_time"].value,
+            )
+            else []
+        )
 
         regions = []
         consolidated_detections = []
@@ -802,10 +841,8 @@ def process_frames(
                 )
                 # and it hasn't disappeared
                 and object_tracker.disappeared[obj["id"]] == 0
-                # and it doesn't overlap with any current motion boxes when not calibrating
-                and not intersects_any(
-                    obj["box"], [] if motion_detector.is_calibrating() else motion_boxes
-                )
+                # and it doesn't overlap with any current motion boxes
+                and not intersects_any(obj["box"], motion_boxes)
             ]
 
             # get tracked object boxes that aren't stationary
@@ -815,10 +852,7 @@ def process_frames(
                 if obj["id"] not in stationary_object_ids
             ]
 
-            combined_boxes = tracked_object_boxes
-            # only add in the motion boxes when not calibrating
-            if not motion_detector.is_calibrating():
-                combined_boxes += motion_boxes
+            combined_boxes = motion_boxes + tracked_object_boxes
 
             cluster_candidates = get_cluster_candidates(
                 frame_shape, region_min_size, combined_boxes
@@ -922,6 +956,23 @@ def process_frames(
                 consolidated_detections = get_consolidated_object_detections(
                     detected_object_groups
                 )
+                # detect and recognize license plate
+                detected_vehicles = [
+                    d
+                    for d in consolidated_detections
+                    if d[0] in vehicle_objects_to_track
+                ]
+                license_results = recognize_plates(
+                    rgb_frame,
+                    detected_vehicles,
+                    plate_detector,
+                    plate_recognizer,
+                    plate_checker,
+                )
+                consolidated_detections.extend(
+                    [result[1] for result in license_results]
+                )
+
                 tracked_detections = [
                     d
                     for d in consolidated_detections
@@ -956,6 +1007,20 @@ def process_frames(
                                 "box": attribute_detection[2],
                             }
                         )
+            if obj["label"] == DEFAULT_LICENSE_PLATE_LABEL:
+                for license_result in license_results:
+                    if license_result[0] != "unknown" and box_inside(
+                        obj["box"], (license_result[1][2])
+                    ):
+                        attributes.append(
+                            {
+                                "label": "license_number",
+                                "score": 1.0,
+                                "box": license_result[1][2],
+                                "text": license_result[0],
+                            }
+                        )
+
             detections[obj["id"]] = {**obj, "attributes": attributes}
 
         # debug object tracking
@@ -969,6 +1034,20 @@ def process_frames(
                 f"debug/frames/track-{'{:.6f}'.format(frame_time)}.jpg", bgr_frame
             )
         # debug
+        if False:
+            bgr_frame = cv2.cvtColor(
+                frame,
+                cv2.COLOR_YUV2BGR_I420,
+            )
+            logging.info(np.shape(bgr_frame))
+            for idx, obj in enumerate(object_tracker.tracked_objects.values()):
+                b = obj["box"]
+                crop_image = bgr_frame[b[1] : b[3], b[0] : b[2]]
+                cv2.imwrite(
+                    f"debug/plate_test/{camera_name}-{'{:.6f}'.format(frame_time)}-{idx}.jpg",
+                    crop_image,
+                )
+
         if False:
             bgr_frame = cv2.cvtColor(
                 frame,
@@ -1047,3 +1126,54 @@ def process_frames(
             )
             detection_fps.value = object_detector.fps.eps()
             frame_manager.close(f"{camera_name}{frame_time}")
+
+
+def recognize_plates(
+    frame,
+    detected_vehicles,
+    detector: Plate_Detector,
+    recognizer: Plate_Recognizer,
+    checker: Plate_Checker,
+):
+    results = []
+    # start = time.time()
+    # logging.info(len(detected_vehicles))
+    for vehicle in detected_vehicles:
+        # start = time.time()
+        bbox = vehicle[2]
+        image = frame[bbox[1] : bbox[3], bbox[0] : bbox[2]]
+        image_processed = detector.get_input(image)
+        model_output = detector.detect(image_processed)
+        detection_result = detector.post_process(
+            model_output[0], model_output[1], model_output[2]
+        )
+        for i, b in enumerate(detection_result):
+            _, plate = img_transform(image, detection_result[i][5:])
+            ocr_image_processed = recognizer.get_input(plate)
+            ocr_model_out = recognizer.run(ocr_image_processed)
+            ocr_result = recognizer.post_process(ocr_model_out)
+            plate_name = ocr_result[0]
+            check_result = checker.run(plate_name)
+            if not check_result or not check_result[1]:
+                plate_name = "unknown"
+            plate_box = (
+                int(bbox[0] + b[0]),
+                int(bbox[1] + b[1]),
+                int(bbox[0] + b[2]),
+                int(bbox[1] + b[3]),
+            )
+            license_plate = (
+                DEFAULT_LICENSE_PLATE_LABEL,
+                b[4].item(),
+                plate_box,
+                copy.copy(vehicle[3]),
+                copy.copy(vehicle[4]),
+                copy.copy(vehicle[5]),
+            )
+            # logging.info("license:")
+            # logging.info(license_plate)
+            # logging.info(plate_name)
+            results.append((plate_name, license_plate))
+        # logging.info(time.time() - start)
+    # logging.info(time.time() - start)
+    return results

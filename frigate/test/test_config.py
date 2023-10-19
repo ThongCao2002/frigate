@@ -1027,12 +1027,7 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 720,
-                        "width": 1280,
-                        "fps": 5,
-                    },
+                    }
                 }
             },
         }
@@ -1087,11 +1082,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                     "snapshots": {
                         "height": 100,
                     },
@@ -1117,12 +1107,7 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
+                    }
                 }
             },
         }
@@ -1146,11 +1131,6 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                     "snapshots": {
                         "height": 150,
@@ -1180,11 +1160,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                 }
             },
         }
@@ -1206,12 +1181,7 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
+                    }
                 }
             },
         }
@@ -1234,11 +1204,6 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect", "rtmp"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                     "rtmp": {
                         "enabled": True,
@@ -1269,11 +1234,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                 }
             },
         }
@@ -1297,11 +1257,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                 }
             },
         }
@@ -1323,12 +1278,7 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
+                    }
                 }
             },
         }
@@ -1351,11 +1301,6 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                     "live": {
                         "quality": 7,
@@ -1384,11 +1329,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                 }
             },
         }
@@ -1410,12 +1350,7 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
+                    }
                 }
             },
         }
@@ -1439,11 +1374,6 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                     "timestamp_style": {"position": "bl", "thickness": 4},
                 }
@@ -1470,11 +1400,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                 }
             },
         }
@@ -1497,11 +1422,6 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                 }
             },
@@ -1530,11 +1450,6 @@ class TestConfig(unittest.TestCase):
                             },
                         ],
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                 }
             },
         }
@@ -1559,11 +1474,6 @@ class TestConfig(unittest.TestCase):
                                 "roles": ["detect"],
                             },
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                     "zones": {
                         "steps": {
@@ -1636,11 +1546,6 @@ class TestConfig(unittest.TestCase):
                             {"path": "rtsp://10.0.0.1:554/video", "roles": ["detect"]}
                         ]
                     },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
-                    },
                     "onvif": {"autotracking": {"movement_weights": "1.23, 2.34, 0.50"}},
                 }
             },
@@ -1663,11 +1568,6 @@ class TestConfig(unittest.TestCase):
                         "inputs": [
                             {"path": "rtsp://10.0.0.1:554/video", "roles": ["detect"]}
                         ]
-                    },
-                    "detect": {
-                        "height": 1080,
-                        "width": 1920,
-                        "fps": 5,
                     },
                     "onvif": {"autotracking": {"movement_weights": "1.234, 2.345a"}},
                 }

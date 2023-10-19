@@ -1,11 +1,12 @@
 import { h, createContext } from 'preact';
 import { baseUrl } from './baseUrl';
 import { produce } from 'immer';
-import { useCallback, useContext, useEffect, useReducer } from 'preact/hooks';
-import useWebSocket, { ReadyState } from 'react-use-websocket';
+import { useCallback, useContext, useEffect, useRef, useReducer } from 'preact/hooks';
 
 const initialState = Object.freeze({ __connected: false });
-export const WS = createContext({ state: initialState, readyState: null, sendJsonMessage: () => {} });
+export const WS = createContext({ state: initialState, connection: null });
+
+const defaultCreateWebsocket = (url) => new WebSocket(url);
 
 function reducer(state, { topic, payload, retain }) {
   switch (topic) {
@@ -32,18 +33,11 @@ function reducer(state, { topic, payload, retain }) {
 export function WsProvider({
   config,
   children,
+  createWebsocket = defaultCreateWebsocket,
   wsUrl = `${baseUrl.replace(/^http/, 'ws')}ws`,
 }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-
-  const { sendJsonMessage, readyState } = useWebSocket(wsUrl, {
-
-    onMessage: (event) => {
-      dispatch(JSON.parse(event.data));
-    },
-    onOpen: () => dispatch({ topic: '__CLIENT_CONNECTED' }),
-    shouldReconnect: () => true,
-  });
+  const wsRef = useRef();
 
   useEffect(() => {
     Object.keys(config.cameras).forEach((camera) => {
@@ -55,25 +49,46 @@ export function WsProvider({
     });
   }, [config]);
 
-  return <WS.Provider value={{ state, readyState, sendJsonMessage }}>{children}</WS.Provider>;
+  useEffect(
+    () => {
+      const ws = createWebsocket(wsUrl);
+      ws.onopen = () => {
+        dispatch({ topic: '__CLIENT_CONNECTED' });
+      };
+
+      ws.onmessage = (event) => {
+        dispatch(JSON.parse(event.data));
+      };
+
+      wsRef.current = ws;
+
+      return () => {
+        ws.close(3000, 'Provider destroyed');
+      };
+    },
+    // Forces reconnecting
+    [state.__reconnectAttempts, wsUrl] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  return <WS.Provider value={{ state, ws: wsRef.current }}>{children}</WS.Provider>;
 }
 
 export function useWs(watchTopic, publishTopic) {
-  const { state, readyState, sendJsonMessage } = useContext(WS);
+  const { state, ws } = useContext(WS);
 
   const value = state[watchTopic] || { payload: null };
 
   const send = useCallback(
     (payload, retain = false) => {
-      if (readyState === ReadyState.OPEN) {
-        sendJsonMessage({
+      ws.send(
+        JSON.stringify({
           topic: publishTopic || watchTopic,
-          payload,
+          payload: typeof payload !== 'string' ? JSON.stringify(payload) : payload,
           retain,
-        });
-      }
+        })
+      );
     },
-    [sendJsonMessage, readyState, watchTopic, publishTopic]
+    [ws, watchTopic, publishTopic]
   );
 
   return { value, send, connected: state.__connected };

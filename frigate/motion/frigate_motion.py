@@ -38,9 +38,6 @@ class FrigateMotionDetector(MotionDetector):
         self.threshold = threshold
         self.contour_area = contour_area
 
-    def is_calibrating(self):
-        return False
-
     def detect(self, frame):
         motion_boxes = []
 

@@ -101,7 +101,9 @@ describe('DarkMode', () => {
 });
 
 describe('usePersistence', () => {
+
   test('returns a defaultValue initially', async () => {
+
     function Component() {
       const [value, , loaded] = usePersistence('tacos', 'my-default');
       return (
@@ -130,8 +132,7 @@ describe('usePersistence', () => {
     `);
   });
 
-  // eslint-disable-next-line jest/no-disabled-tests
-  test.skip('updates with the previously-persisted value', async () => {
+  test('updates with the previously-persisted value', async () => {
     setData('tacos', 'are delicious');
 
     function Component() {
